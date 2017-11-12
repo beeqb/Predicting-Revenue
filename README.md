@@ -1,5 +1,5 @@
 # Predicting-Revenue
-A project from the MSiA course, *Predictive Analytics I*, that predicting future revenue for a retail company based on  customer's transaction data.
+A project from the MSiA course, *Predictive Analytics I*, that predicting future revenue for a retail company based on  customers' transaction data.
 
 
 ### Business Situation: 
