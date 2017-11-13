@@ -1,0 +1,409 @@
+---
+title: "Predictive Analytics Project: Revenue Prediction"
+author: "Johnny Chiu"
+date: "11/12/2017"
+output: html_document
+---
+
+## Table of content
+
+* Read Data
+* Exploratory Data Analysis & Data Cleansing
+    * Examine the distribution of each variable
+    * Examine the nature of relationships
+    * Check Missing value
+    * Detect Outliers
+    * Linearize and Normalize Transformations
+* Strategy for Building the Prediction Model
+* Create Possible Features
+* Classification
+    * Model Fitting
+    * Model Diagnostics
+    * Model Selection
+* Regression
+    * Model Fitting
+        * Multiple Linear Regression
+        * Stepwise Regression
+        * Ridge Regression
+        * Lasso Regression
+    * Model Diagnostics  
+        * Checking Normality
+        *  Checking Homoscedasticity
+        *  Checking Independence
+        *  Checking Outliers: Deleted residual
+        *  Checking Influential Observations
+              *  Leverage
+              *  Cook's distance
+        *  Checking Multicollinearity: VIF (>10)
+        * Model Selection
+* Model Validation
+* Conclusions
+* References 
+
+    
+---
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+## Read Data
+```{r}
+sales_df = read.csv('../_data/catalog sales data.csv')
+sales_df$uid = row.names(sales_df)
+sales_train = sales_df %>% filter(train==1)
+sales_test = sales_df %>% filter(train==0)
+
+sales_train$datelp6 = as.Date(sales_train$datelp6, "%m/%d/%Y")
+sales_train$datead6 = as.Date(sales_train$datead6, "%m/%d/%Y")
+```
+
+## Exploratory Data Analysis & Data Cleansing
+```{r}
+distribution_plot <- function(df,col,bin){
+  return(ggplot(data=df, aes_string(x=col))+
+           geom_histogram(bins=bin)+ 
+           theme_classic()+
+           ggtitle(paste("Distribution for feature:",col)))
+}
+box_plot <- function(df, col){
+  return(ggplot(data=df, aes_string(x="''",y=col))+ geom_boxplot())  
+}
+
+```
+The following EDA will use only the users in the training dataset.
+
+#### Examine the distribution of each variable
+
+##### > **targdol**: dollar purchase resulting from catalog mailing 
+• ***What's the distriution of the dollar purchase resulting from catalog mailing?***
+
+```{r}
+distribution_plot(sales_train, "targdol", 50)
+```
+
+We can see that the distribution for "targdol" is highly right skewed, where most of the value are 0. We can see that over `r table(sales_train$targdol==0)[2]/dim(sales_train)[1]` of all the values are 0. Let also what the distribution is ignoring all the 0 values
+```{r}
+targdol_not_zero = sales_train %>% filter(targdol != 0 )
+distribution_plot(targdol_not_zero, "targdol", 50)
+
+```
+Let's check the summary value of targdol
+```{r}
+summary(targdol_not_zero$targdol)
+```
+We see that the variance of targdol is `r var(targdol_not_zero$targdol)`, which is very high.
+
+Since the distribution is higher right skewed, we can use log transformation to normalize it. Let's check how it will be like after taking log
+```{r}
+distribution_plot(targdol_not_zero, "log(targdol)",50)
+```
+```{r}
+box_plot(targdol_not_zero, "log(targdol)")
+```
+We can use log(targdol) as our response variable for the regression model.
+
+##### > **datead6**: date added to file
+
+• ***What's the date added to file with the highest frequency?***
+
+```{r}
+head(sort(table(sales_train$datead6),decreasing = TRUE),10)/50418
+```
+1.75% of all the users is added to file file on the date *Sep 1, 1993*.
+
+• ***What's the date added to file with the highest frequency for people who purchase vesus who don't purchase? ***
+```{r}
+sales_train_purchase = sales_train %>% filter(targdol!=0)
+sales_train_non_purchase = sales_train %>% filter(targdol==0)
+
+
+head(sort(table(sales_train_purchase$datead6),decreasing = TRUE),10)/dim(sales_train_purchase)[1]
+head(sort(table(sales_train_non_purchase$datead6),decreasing = TRUE),10)/dim(sales_train_non_purchase)[1]
+
+```
+The highest frequency date for both group is *Sep 1, 1993*. 
+
+
+##### > **datelp6**: date of last purchase
+
+• ***What's the date of last purchase with the highest frequency?***
+```{r}
+head(sort(table(sales_train$datelp6),decreasing = TRUE),10)/dim(sales_train)[1]
+```
+
+• ***What's the date of last purchase with the highest frequency for people who purchase vesus who don't purchase? ***
+```{r}
+head(sort(table(sales_train_purchase$datelp6),decreasing = TRUE),10)/dim(sales_train_purchase)[1]
+head(sort(table(sales_train_non_purchase$datelp6),decreasing = TRUE),10)/dim(sales_train_non_purchase)[1]
+
+```
+One thing worth mentioning about the distribution of the people who have purchased is that the top 2 date accounts for more than 50% of all the customers. It is not usual that more than 50% of the consumers' last purchase is on either *Mar 1, 2012* or *Nov 15, 2011*. We have to keep this in mind.
+
+
+##### > **lpuryear**: latest purchase year
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(lpuryear))) + geom_bar() + theme_classic()
+```
+
+There are 361 NA's in this feature. Since we also have the feature "datelp6", we can try to recreate this feature using that feature.
+
+```{r}
+sales_train$lpuryear2 = floor(as.numeric(difftime(as.Date("2012-12-01"), sales_train$datelp6, unit="weeks"))/52.25)
+```
+
+How the distribution look like using the recreated "lpuryear2"?
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(lpuryear2))) + geom_bar() + theme_classic()
+```
+It seems that the lpuryear can not be re-created using the feature "datelp6".  We will need to figure how to fill the missing value later. Maybe we can fill it by the current lpuryear distribution.
+
+
+##### > **slstyr**: sales this year; **slslyr**: sales last year, **sls2ago**: sales 2 years ago, **sls3ago**: sales 3 years ago
+
+• ***What's the distribution for all these sale ignoring people who didn't make any purchase?***
+```{r}
+ggplot(data=sales_train[sales_train['slstyr']!=0,], aes(x=slstyr))+ 
+        geom_histogram()
+```
+```{r}
+ggplot(data=sales_train[sales_train['slstyr']!=0,], aes(x=log(slstyr+1)))+ geom_histogram()
+
+ggplot(data=sales_train[sales_train['slstyr']!=0,], aes(x='',y=log(slstyr+1)))+ geom_boxplot()
+```
+
+##### > **slshist**: LTD dollars
+```{r}
+ggplot(data=sales_train, aes(x=slshist))+ 
+        geom_histogram(bins=100)
+```
+
+##### > **ordtyr**: orders this year
+##### > **ordlyr**: orders last year
+##### > **ord2ago**: orders 2 years ago
+##### > **ord3ago**: orders 3 years ago
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(ordtyr)))+ 
+        geom_bar()
+```
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(ordlyr)))+ 
+        geom_bar()
+```
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(ord2ago)))+ 
+        geom_bar()
+```
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(ord3ago)))+ 
+        geom_bar()
+```
+
+##### > **ordhist**: LTD orders
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(ordhist)))+ 
+        geom_bar()
+```
+##### > **falord**: LTD fall orders
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(falord)))+ 
+        geom_bar()
+```
+##### > **sprord**: LTD spring orders
+```{r}
+ggplot(data=sales_train, aes(x=as.factor(sprord)))+ 
+        geom_bar()
+```
+
+
+##### Examine the nature of relationships
+```{r}
+# plot(sales_train)
+```
+
+
+##### Check Missing value
+```{r}
+na_count = data.frame(na_count = colSums(is.na(sales_train)))
+na_count$name=row.names(na_count)
+na_count[na_count$na_count !=0,]$name
+```
+We can see that "lpuryear" is the only column that with NAs.
+
+##### Detect Outliers
+
+
+##### Linearize and Normalize Transformations
+```{r}
+data_manipulate <- function(sales_train){
+  sales_train$log_targdol = log(sales_train$targdol+1)
+  
+  sales_train$log_slstyr = log(sales_train$slstyr+1)
+  sales_train$log_slslyr = log(sales_train$slslyr+1)
+  sales_train$log_sls2ago = log(sales_train$sls2ago+1)
+  sales_train$log_sls3ago = log(sales_train$sls3ago+1)
+  
+  sales_train$targdol_bol = ifelse(sales_train$targdol!=0, 1, 0)
+  return(sales_train)
+}
+
+sales_train_2 = data_manipulate(sales_train)
+```
+
+  
+## Strategy for Building the Prediction Model
+1. Based on preliminary analyses, transform the data and include any interactions as appropriate.
+2. First develop a binary logistic regression model for targdol > 0. Use this model to estimate the probabilities of being responders for the test set.
+3. Next develop a multiple regression model using data with targdol > 0 only.
+4. For each observation (including targdol = 0) calculate E(targdol) by multiplying the predicted targdol from the multiple regression model by P(targdol > 0) from the logistic regression model by using the formula E(y) = E(y|y > 0)P(y > 0).
+
+## Create Possible Features
+```{r}
+classificaiton_selected_features = c("log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago",
+                      "ordtyr","ordlyr","ord2ago","ord3ago",
+                      "ordhist","falord","sprord",
+                      "targdol_bol")
+
+```
+
+
+## Classification
+##### Model Fitting
+```{r}
+fit = glm(targdol_bol ~ ., family=binomial, data=sales_train_2[classificaiton_selected_features])
+summary(fit)
+```
+```{r}
+predict1 = predict(fit, newdata=sales_train_2[classificaiton_selected_features], type="response")
+predict_response = rep(0,dim(sales_train_2)[1])
+predict_response[predict1>0.5]=1
+
+real_response = sales_train_2$targdol_bol
+
+print(table(actual = real_response, prediction = predict_response))
+```
+```{r}
+library(pROC)
+plot.roc(real_response, fit$fitted.values, xlab="1-Specificity")
+my_auc = auc(real_response, fit$fitted.values)
+```
+
+The AUC for this logistic regression is `r my_auc`
+
+##### Model Diagnostics
+How to do it for logistic regression?
+
+##### Model Selection
+
+  
+## Regression
+For regression, we will only use the data with targdol > 0 as our training data
+```{r}
+sales_train_reg = sales_train_2 %>% filter(targdol != 0 )
+```
+
+#### Model Fitting
+```{r}
+regression_selected_features = c("log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago",
+                      "ordtyr","ordlyr","ord2ago","ord3ago",
+                      "ordhist","falord","sprord",
+                      "log_targdol")
+```
+
+##### > Multiple Linear Regression
+```{r}
+fit_multiple = lm(log_targdol~.,data=sales_train_reg[regression_selected_features])
+summary(fit_multiple)
+```
+
+##### > Stepwise Regression
+##### > Ridge Regression
+##### > Lasso Regression
+
+
+#### Model Diagnostics  
+##### > Checking Normality
+##### > Checking Homoscedasticity
+##### > Checking Independence
+##### > Checking Outliers: Deleted residual
+##### > Checking Influential Observations
+      *  Leverage
+      *  Cook's distance
+      
+##### > Checking Multicollinearity: VIF (>10)
+
+#### Model Selection
+
+## Model Validation
+```{r}
+model_validation <- function(sales_test, fit_classification, fit_regression, classificaiton_selected_features, regression_selected_features){
+  ## predict sales_test_2 using fit_classification
+  sales_test_2 = data_manipulate(sales_test)
+  predict_classification_final = predict(fit, newdata=sales_test_2[classificaiton_selected_features], type="response")
+
+  ## keep the data with targdol prob > 0.5, save as sales_test_reg
+  sales_test_2$targdol_bol_predict = predict_classification_final
+  sales_test_2$uid = row.names(sales_test_2)
+  sales_test_reg = sales_test_2 %>% filter(targdol_bol_predict>0.5)
+  
+  ## predict sales_test_reg using fit_regression, and take exp(log_targdon) to recover back to real measure
+  predict_regression_log_final = predict(fit_multiple, newdata=sales_test_reg[regression_selected_features])
+  predict_regression_final = exp(predict_regression_log_final)
+  sales_test_reg$targdol_predict = predict_regression_final
+  
+  ## generate a data frame with original and predicted value, save as sales_test_final
+  sales_test_final = merge(sales_test_2 %>% select(uid, targdol), sales_test_reg %>% select(uid, targdol_predict),by='uid',all.x= TRUE)
+  sales_test_final[is.na(sales_test_final)]=0
+
+  ## calculate MSPE & top_1000
+  calculate_MSPE <- function(actual, predicted){
+    return(mean((actual-predicted) ^ 2))
+  }
+  
+  calculate_top1000 <- function(actual, predicted, by_predicted=TRUE){
+    df = data.frame(actual=actual, predicted=predicted)
+    if (by_predicted){
+      df = df %>% arrange(desc(predicted))
+    }else{
+      df = df %>% arrange(desc(actual))
+    }
+    return(sum(df[1:1000,]$actual))
+  }
+
+  mspe = calculate_MSPE(sales_test_final$targdol, sales_test_final$targdol_predict)
+  top1000 = calculate_top1000(sales_test_final$targdol, sales_test_final$targdol_predict)
+  actual_top1000 = calculate_top1000(sales_test_final$targdol, sales_test_final$targdol_predict, by_predicted=FALSE)
+ 
+  return(list(mspe=mspe, top1000=top1000, actual_top1000=actual_top1000))
+}
+
+model_validation(sales_test, fit_classification, fit_regression, classificaiton_selected_features, regression_selected_features)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.	Cover page (Title, names of group members)
+2.	Executive Summary: Give a non-technical summary of your findings mentioning the key predictors of responders vs. non-responders and of the amount of sales. This summary should not include any equations and as few statistics as possible. (About 1/2 page)
+3.	Introduction: Describe your overall approach and any a priori hypotheses. Give a brief outline of the other sections of the report. (About 2 pages)
+4.	Model Fitting: This is the core of the report. Divide this into two parts: (i) classification model, (ii) multiple regression model.  Explain the  steps used in model fitting including exploratory analysis of data to assess the nature of relationships, detection of outliers and influential observations, linearizing and normalizing transformations etc.; different models fitted and methods used to fit them (e.g., stepwise regression); model diagnostics. The final model including residual analyses and other diagnostics resulting to data transformations. (10 pages)
+5.	Model Validation: Explain how you validated the model against the test data set. Report the results about how well the model predicted the test set sales values and how well your top 1,000 predicted customers from the test set performed in terms of actual sales. (2 pages)
+6.	Conclusions: Draw conclusions about significant predictors, any key missing predictors which would have improved the model, etc. (1 page)
+7.	References 
