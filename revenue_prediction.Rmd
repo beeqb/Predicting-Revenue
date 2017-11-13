@@ -1,8 +1,10 @@
 ---
-title: "Predictive Analytics Project: Revenue Prediction"
+title: 'Predictive Analytics Project: Revenue Prediction'
 author: "Johnny Chiu"
 date: "11/12/2017"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ## Table of content
