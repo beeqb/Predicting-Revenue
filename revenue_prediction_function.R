@@ -46,12 +46,15 @@ data_manipulate <- function(sales_train){
                                                                     ifelse(sales_train$lpuryear == 6, 2006,
                                                                            ifelse(sales_train$lpuryear == 5, 2005,
                                                                                   ifelse(sales_train$lpuryear == 4, 2004,
-                                                                                         ifelse(sales_train$lpuryear == 3, 2003,
-                                                                                                2002))))))))))
+                                                                                         ifelse(sales_train$lpuryear == 3, 2003, 2002))))))))))
   
+  sales_train$lpuryear[is.na(sales_train$lpuryear)] <- 2002
   # Use the most recent year, from datelp6 & lpuryear
   sales_train$lpuryear_new <- ifelse(sales_train$datelp6 >= sales_train$lpuryear, sales_train$datelp6, sales_train$lpuryear)
   sales_train$lpuryear_new <- 2012 - sales_train$lpuryear_new
+  
+  # delete 
+  
   return(sales_train)
 }
 
@@ -100,7 +103,7 @@ calculate_metrics <- function(real_response, predict_fit, optimal_p){
   precision=confusion_table[2,2]/(confusion_table[1,2]+confusion_table[2,2]) 
   f1_score=2*precision*sensitivity/(precision+sensitivity)
   
-  plot.roc(real_response, predict_response, xlab="1-Specificity")
+  plot.roc(real_response, predict_fit, xlab="1-Specificity")
   
   my_auc = auc(real_response, predict_fit)
   
@@ -137,7 +140,7 @@ model_validation <- function(sales_test, fit_classification, optimal_p, fit_regr
   sales_test_reg$targdol_predict = predict_regression_final
   
   ## generate a data frame with original and predicted value, save as sales_test_final
-  sales_test_final = merge(sales_test_2 %>% select(uid, targdol), sales_test_reg %>% select(uid, targdol_predict),by='uid',all.x= TRUE)
+  sales_test_final = merge(sales_test_2 %>% dplyr::select(uid, targdol), sales_test_reg %>% dplyr::select(uid, targdol_predict),by='uid',all.x= TRUE)
   sales_test_final[is.na(sales_test_final)]=0
   
   ## calculate MSPE & top_1000
@@ -160,4 +163,22 @@ model_validation <- function(sales_test, fit_classification, optimal_p, fit_regr
   actual_top1000 = calculate_top1000(sales_test_final$targdol, sales_test_final$targdol_predict, by_predicted=FALSE)
   
   return(list(sales_test_df=sales_test_final,mspe=mspe, top1000=top1000, actual_top1000=actual_top1000))
+}
+
+my_cv_glmnet <- function(y, x, alpha){
+  # set seed for cross validation
+  set.seed(1)
+  
+  # using cv.glmnet to build lasso. The following line calculate 3 fold cv for each lambda, so there will be 1000*3 model fitting.
+  fit.cv=cv.glmnet(x,y,alpha=alpha,nfold=3,lambda=seq(0,10,0.01))
+  
+  # get the lambda with the smallest Mean-Squared Error
+  fitted_min_lambda=fit.cv$lambda.min
+  
+  # get the index of the smallest lambda, and use it to find our ideal coefficient
+  small.lambda.index <- which(fit.cv$lambda == fit.cv$lambda.min)
+  small.lambda.betas <- coef(fit.cv$glmnet.fit)[,small.lambda.index]
+  
+  return(list(lambda=fitted_min_lambda,
+              small.lambda.betas=small.lambda.betas))
 }

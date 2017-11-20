@@ -1,7 +1,10 @@
+source('revenue_prediction_function.R')
 library(dplyr)
 library(ggplot2)
 library(pROC)
-source('revenue_prediction_function.R')
+library(MASS)
+library(glmnet)
+
 
 ##### Read Data
 sales_df = read.csv('../_data/catalog sales data.csv')
@@ -13,16 +16,21 @@ sales_test = sales_df %>% filter(train==0)
 sales_train_2 = data_manipulate(sales_train)
 
 
-
-
 ########## Classification
 ##### Create Possible Features
 classificaiton_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new','targdol_bol')
+
+# #### Try undersampling
+# sales_train_2_yes = sales_train_2 %>% filter(targdol_bol==1)
+# sales_train_2_no = sales_train_2 %>% filter(targdol_bol==0) %>% sample_n(dim(sales_train_2_yes)[1])
+# sales_train_undersample = rbind(sales_train_2_yes, sales_train_2_no)
 
 
 ##### Model Fitting
 fit_classification = glm(targdol_bol ~ ., family=binomial, data=sales_train_2[classificaiton_selected_features])
 summary(fit_classification)
+
+
 
 predict_fit = predict(fit_classification, newdata=sales_train_2[classificaiton_selected_features], type="response")
 
@@ -84,12 +92,38 @@ sales_train_reg = sales_train_2 %>% filter(targdol != 0 )
 
 
 ##### Model Fitting
+# regression_selected_features = c("log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord","log_targdol")
 regression_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new',"log_targdol")
+# regression_selected_features = c('slshist','ordhist_max','sales_consistency',"log_targdol")
 
 
 ##### > Multiple Linear Regression
 fit_multiple = lm(log_targdol~.,data=sales_train_reg[regression_selected_features])
 summary(fit_multiple)
+
+##### > Stepwise Linear Regression
+# **Backward**
+fit_stepback <- stepAIC(fit_multiple,direction = c("backward"))
+summary(fit_stepback)
+
+# **Forward**
+fit_stepforw <- stepAIC(fit_multiple,direction = c("forward"))
+summary(fit_stepforw)
+
+##### > Lasso Linear Regression
+# set model x and y
+y=sales_train_reg$log_targdol
+x=model.matrix(log_targdol~.,sales_train_reg[regression_selected_features])
+my_cv_glmnet(y,x,1)
+
+# predict using glmnet fitted model. Should be integrate into model_validation
+# lassofit = glmnet(x, y, alpha=1, lambda=lambdalasso)
+# x_test=model.matrix(log_targdol~.,sales_test_reg[regression_selected_features])
+# predict(lassofit, newx = x_test)
+
+
+# ##### > Ridge Linear Regression
+my_cv_glmnet(y,x,0)
 
 ##### Compare between all fitted regression models
 if(FALSE){
@@ -102,9 +136,12 @@ if(FALSE){
   # predictors: 'slshist','ordhist_max','sales_consistency','lpuryear_new'
   # R-squared: 0.07694
   # Adjusted R-squared: 0.07618 
+  
+  # Nov 20: fit model using only predictors of interests after deleting "lpuryear_new"
+  # predictors: 'slshist','ordhist_max','sales_consistency'
+  # R-squared: 0.07664
+  # Adjusted R-squared: 0.07606 
 }
-
-
 
 
 
@@ -134,6 +171,17 @@ if(FALSE){
   # 
   # $top1000
   # [1] 22982.15
+  # 
+  # $actual_top1000
+  # [1] 120252.4
+  
+  # classification: Nov 20
+  # regression: Nov 20 after deleting lpuryear_new
+  # $mspe
+  # [1] 470.615
+  # 
+  # $top1000
+  # [1] 23061
   # 
   # $actual_top1000
   # [1] 120252.4
