@@ -16,9 +16,13 @@ sales_test = sales_df %>% filter(train==0)
 sales_train_2 = data_manipulate(sales_train)
 
 
+
+
 ########## Classification
 ##### Create Possible Features
-classificaiton_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new','targdol_bol')
+classificaiton_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
+                                     'sls_consistency','lpuryear_new','sale_within_percent',
+                                     'avg_order_sale','max_season','targdol_bol')
 
 # #### Try undersampling
 # sales_train_2_yes = sales_train_2 %>% filter(targdol_bol==1)
@@ -42,7 +46,51 @@ calculate_metrics(real_response, predict_fit, optimal_p)
 
 ##### Compare between all fitted classification models 
 if(FALSE){
-  # base model: fit logistic using all the predictors
+  ### Version 3: 
+  # fit model using many more features including sale_within_percent, avg_order_sale, max_season, log_slshist, ordhist_max_sqrt, sls_consistency
+  # predictors: 
+  # c('log_slshist','ordhist_max_sqrt','sales_consistency',
+  #   'sls_consistency','lpuryear_new','sale_within_percent',
+  #   'avg_order_sale','max_season','targdol_bol')
+  #  prediction
+  # actual     0     1
+  # 0 45265   299
+  # 1  4406   439
+  # $auc
+  # [1] 0.7920445
+  # 
+  # $ccr
+  # [1] 0.9066635
+  # 
+  # $sensitivity
+  # [1] 0.09060888
+  # 
+  # $specificity
+  # [1] 0.9934378
+  # 
+  # $f1_score
+  # [1] 0.1572631
+  
+  ### Version 2: 
+  # fit model using only predictors of interests
+  # predictors: 'slshist','ordhist_max','sales_consistency','lpuryear_new'
+  # $auc
+  # Area under the curve: 0.7852
+  # 
+  # $ccr
+  # [1] 0.9063858
+  # 
+  # $sensitivity
+  # [1] 0.08235294
+  # 
+  # $specificity
+  # [1] 0.9940084
+  # 
+  # $f1_score
+  # [1] 0.1446438
+  
+  ### base model: 
+  # fit logistic using all the predictors
   # predictors: "log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord"
   #         prediction
   # actual     0     1
@@ -62,24 +110,6 @@ if(FALSE){
   # 
   # $f1_score
   # [1] 0.3589356
-  
-  
-  # Nov 20 : fit model using only predictors of interests
-  # predictors: 'slshist','ordhist_max','sales_consistency','lpuryear_new'
-  # $auc
-  # Area under the curve: 0.7852
-  # 
-  # $ccr
-  # [1] 0.9063858
-  # 
-  # $sensitivity
-  # [1] 0.08235294
-  # 
-  # $specificity
-  # [1] 0.9940084
-  # 
-  # $f1_score
-  # [1] 0.1446438
 }
 
 
@@ -92,9 +122,19 @@ sales_train_reg = sales_train_2 %>% filter(targdol != 0 )
 
 
 ##### Model Fitting
+### base model
 # regression_selected_features = c("log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord","log_targdol")
-regression_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new',"log_targdol")
+
+### version 2
+# regression_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new',"log_targdol")
 # regression_selected_features = c('slshist','ordhist_max','sales_consistency',"log_targdol")
+
+### version 3
+regression_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
+                                  'sls_consistency','lpuryear_new','sale_within_percent',
+                                  'avg_order_sale','max_season',"log_targdol")
+regression_selected_features = c('log_slshist','sales_consistency','sls_consistency',
+                                 'sale_within_percent','avg_order_sale','log_targdol')
 
 
 ##### > Multiple Linear Regression
@@ -127,20 +167,34 @@ my_cv_glmnet(y,x,0)
 
 ##### Compare between all fitted regression models
 if(FALSE){
-  # base model: fit regression using all the predictors
-  # predictors: "log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord"
-  # R-squared: 0.05259
-  # Adjusted R-squared: 0.05043
+  ### Verson 3: 
+  # fit model using many more features including sale_within_percent, avg_order_sale, max_season, log_slshist, ordhist_max_sqrt, sls_consistency
+  # predictors:
+  # c('log_slshist','ordhist_max_sqrt','sales_consistency',
+  #                                     'sls_consistency','lpuryear_new','sale_within_percent',
+  #                                     'avg_order_sale','max_season',"log_targdol")
+  # Multiple R-squared:  0.09608,	Adjusted R-squared:  0.09458
   
-  # Nov 20: fit model using only predictors of interests
+  # keep only significant predictors:
+  # c('log_slshist','sales_consistency','sls_consistency',
+  #   'sale_within_percent','avg_order_sale','log_targdol')
+  # Multiple R-squared:  0.09597,	Adjusted R-squared:  0.09504 
+  
+  
+  ### Verson 2: 
+  # fit model using only predictors of interests
   # predictors: 'slshist','ordhist_max','sales_consistency','lpuryear_new'
-  # R-squared: 0.07694
-  # Adjusted R-squared: 0.07618 
+  # Multiple R-squared: 0.07694,	Adjusted R-squared:  0.07618 
   
-  # Nov 20: fit model using only predictors of interests after deleting "lpuryear_new"
+  # keep only significant predictors:
   # predictors: 'slshist','ordhist_max','sales_consistency'
-  # R-squared: 0.07664
-  # Adjusted R-squared: 0.07606 
+  # Multiple R-squared: 0.07664,	Adjusted R-squared: 0.07606 
+  
+  
+  ### base model:
+  # fit regression using all the predictors
+  # predictors: "log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord"
+  # Multiple R-squared: 0.05259,	Adjusted R-squared: 0.05043
 }
 
 
@@ -152,18 +206,20 @@ result
 
 ##### Final measurement comparasion
 if(FALSE){
-  # classification: base model
-  # regression: base model
+  ### Version 3
+  # classification: Nov 20 
+  # regression: Nov 20 after deleting lpuryear_new
   # $mspe
-  # [1] 5653056159
+  # [1] 444.5706
   # 
   # $top1000
-  # [1] 47182.81
+  # [1] 27638.48
   # 
   # $actual_top1000
   # [1] 120252.4
   
   
+  ### Version 2
   # classification: Nov 20
   # regression: Nov 20
   # $mspe
@@ -185,6 +241,23 @@ if(FALSE){
   # 
   # $actual_top1000
   # [1] 120252.4
+  
+  
+  ### Base model
+  # classification: base model
+  # regression: base model
+  # $mspe
+  # [1] 5653056159
+  # 
+  # $top1000
+  # [1] 47182.81
+  # 
+  # $actual_top1000
+  # [1] 120252.4
+  
+
+  
+
 }
 
 

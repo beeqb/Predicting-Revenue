@@ -6,11 +6,12 @@ data_manipulate <- function(sales_train){
   # take log transformation of targdol
   sales_train$log_targdol = log(sales_train$targdol+1)
   
-  # take log transformation of sales related columns
+  # # take log transformation of sales related columns
   sales_train$log_slstyr = log(sales_train$slstyr+1)
   sales_train$log_slslyr = log(sales_train$slslyr+1)
   sales_train$log_sls2ago = log(sales_train$sls2ago+1)
   sales_train$log_sls3ago = log(sales_train$sls3ago+1)
+  sales_train$log_slshist = log(sales_train$slshist+1)
   
   # create the response variable for logistic regression
   sales_train$targdol_bol = ifelse(sales_train$targdol!=0, 1, 0)
@@ -23,6 +24,8 @@ data_manipulate <- function(sales_train){
       sales_train$ordhist_max[i] = sales_train$ordhist[i]
     }
   }
+  sales_train$ordhist_new = NULL
+  sales_train$ordhist_max_sqrt = sqrt(sales_train$ordhist_max)
   
   # A variable calculate the consistency of a consumers
   subset_3yrsales = sales_train[,c("slslyr" , "sls2ago", "sls3ago")]
@@ -53,7 +56,23 @@ data_manipulate <- function(sales_train){
   sales_train$lpuryear_new <- ifelse(sales_train$datelp6 >= sales_train$lpuryear, sales_train$datelp6, sales_train$lpuryear)
   sales_train$lpuryear_new <- 2012 - sales_train$lpuryear_new
   
-  # delete 
+  # calculate consistency using sales history
+  sale_consistency = sales_train %>% dplyr::select(slstyr, slslyr, sls2ago, sls3ago)
+  sale_consistency[sale_consistency>0] = 1
+  sales_train$sls_consistency = rowSums(sale_consistency)
+  
+  # calculate the percetage of sales within three years to total sales
+  sale_within = sales_train %>% dplyr::select(slstyr, slslyr, sls2ago, sls3ago, slshist)
+  sale_within$slshist[sale_within$slshist==0] = 1 
+  sale_within = sale_within %>% mutate(sale_within_three = slstyr + slslyr + sls2ago + sls3ago) %>% mutate(sale_within_percent=sale_within_three/slshist)
+  sales_train$sale_within_percent = sale_within$sale_within_percent
+  
+  # average total order value 
+  sales_train = sales_train %>% mutate(avg_order_sale = slshist/ordhist_max)
+  
+  # maximum order witnin fall or spring, categorical
+  max_season = sales_train %>% dplyr::select(falord, sprord)
+  sales_train$max_season = colnames(max_season)[apply(max_season,1,which.max)]
   
   return(sales_train)
 }
@@ -71,7 +90,7 @@ get_optimal_p <- function(real_response, predict_fit, p_threshold_list){
     pred = rep(0, length(real_response))
     pred[predict_fit > p]=1
     ccr = sum(diag(table(real=real_response, pred)))/ length(real_response)
-    print(paste("CCR:",ccr," when p=",p))
+    # print(paste("CCR:",ccr," when p=",p))
     
     if (ccr >= max_ccr){
       max_ccr= ccr
