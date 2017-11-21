@@ -207,8 +207,7 @@ result
 ##### Final measurement comparasion
 if(FALSE){
   ### Version 3
-  # classification: Nov 20 
-  # regression: Nov 20 after deleting lpuryear_new
+  # description: fit model using many more features including sale_within_percent, avg_order_sale, max_season, log_slshist, ordhist_max_sqrt, sls_consistency
   # $mspe
   # [1] 444.5706
   # 
