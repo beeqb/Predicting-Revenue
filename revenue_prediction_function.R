@@ -28,7 +28,7 @@ data_manipulate <- function(sales_train){
   sales_train$ordhist_max_sqrt = sqrt(sales_train$ordhist_max)
   
   # A variable calculate the consistency of a consumers
-  subset_3yrsales = sales_train[,c("slslyr" , "sls2ago", "sls3ago")]
+  subset_3yrsales = sales_train[,c("slstyr" ,"slslyr" , "sls2ago", "sls3ago")]
   RowVar <- function(x) {
     rowSums((x - rowMeans(x))^2)/(dim(x)[2] - 1)
   }

@@ -20,9 +20,12 @@ sales_train_2 = data_manipulate(sales_train)
 
 ########## Classification
 ##### Create Possible Features
+# classificaiton_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
+#                                      'sls_consistency','lpuryear_new','sale_within_percent',
+#                                      'avg_order_sale','max_season','targdol_bol')
 classificaiton_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
-                                     'sls_consistency','lpuryear_new','sale_within_percent',
-                                     'avg_order_sale','max_season','targdol_bol')
+                                     'lpuryear_new','sale_within_percent',
+                                     'avg_order_sale','max_season','targdol_bol')#'sls_consistency'
 
 # #### Try undersampling
 # sales_train_2_yes = sales_train_2 %>% filter(targdol_bol==1)
@@ -70,6 +73,27 @@ if(FALSE){
   # 
   # $f1_score
   # [1] 0.1572631
+  
+  # change sales_consistency including slstyr, drop sls_consistency
+  # prediction
+  # actual     0     1
+  # 0 44970   594
+  # 1  3975   870
+  # $auc
+  # [1] 0.7908745
+  # 
+  # $ccr
+  # [1] 0.9093614
+  # 
+  # $sensitivity
+  # [1] 0.1795666
+  # 
+  # $specificity
+  # [1] 0.9869634
+  # 
+  # $f1_score
+  # [1] 0.2757965
+  
   
   ### Version 2: 
   # fit model using only predictors of interests
@@ -130,9 +154,9 @@ sales_train_reg = sales_train_2 %>% filter(targdol != 0 )
 # regression_selected_features = c('slshist','ordhist_max','sales_consistency',"log_targdol")
 
 ### version 3
-regression_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
-                                  'sls_consistency','lpuryear_new','sale_within_percent',
-                                  'avg_order_sale','max_season',"log_targdol")
+# regression_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
+#                                   'sls_consistency','lpuryear_new','sale_within_percent',
+#                                   'avg_order_sale','max_season',"log_targdol")
 regression_selected_features = c('log_slshist','sales_consistency','sls_consistency',
                                  'sale_within_percent','avg_order_sale','log_targdol')
 
@@ -213,6 +237,16 @@ if(FALSE){
   # 
   # $top1000
   # [1] 27638.48
+  # 
+  # $actual_top1000
+  # [1] 120252.4
+  
+  # change sales_consistency including slstyr, drop sls_consistency in classification
+  # $mspe
+  # [1] 429.5835
+  # 
+  # $top1000
+  # [1] 40177.52
   # 
   # $actual_top1000
   # [1] 120252.4
