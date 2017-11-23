@@ -36,6 +36,8 @@ data_manipulate <- function(sales_train){
   salesmean = rowMeans(subset_3yrsales)
   salescv = ifelse(salesmean!=0, salesvar/salesmean, 5000)
   sales_train$sales_consistency = salescv
+  sales_train$salesvar = salesvar
+  sales_train$salesmean = salesmean
   
   # Use the most recent year, from datelp6 & lpuryear
   sales_train$datelp6 <- as.integer(format(sales_train$datelp6, "%Y"))
@@ -49,7 +51,9 @@ data_manipulate <- function(sales_train){
                                                                     ifelse(sales_train$lpuryear == 6, 2006,
                                                                            ifelse(sales_train$lpuryear == 5, 2005,
                                                                                   ifelse(sales_train$lpuryear == 4, 2004,
-                                                                                         ifelse(sales_train$lpuryear == 3, 2003, 2002))))))))))
+                                                                                         ifelse(sales_train$lpuryear == 3, 2003, NA))))))))))
+  
+  
   
   sales_train$lpuryear[is.na(sales_train$lpuryear)] <- 2002
   # Use the most recent year, from datelp6 & lpuryear
@@ -66,34 +70,100 @@ data_manipulate <- function(sales_train){
   sale_within$slshist[sale_within$slshist==0] = 1 
   sale_within = sale_within %>% mutate(sale_within_three = slstyr + slslyr + sls2ago + sls3ago) %>% mutate(sale_within_percent=sale_within_three/slshist)
   sales_train$sale_within_percent = sale_within$sale_within_percent
+  sales_train$sale_within_three = log(sale_within$sale_within_three+1)
+  
+  # LOG: calculate the percetage of sales within three years to total sales
+  sale_within_log = sales_train %>% dplyr::select(log_slstyr, log_slslyr, log_sls2ago, log_sls3ago, log_slshist)
+  sale_within_log$log_slshist[sale_within_log$slshist==0] = 1 
+  sale_within_log = sale_within_log %>% mutate(sale_within_three = log_slstyr + log_slslyr + log_sls2ago + log_sls3ago) %>% mutate(sale_within_percent_log=sale_within_three/log_slshist)
+  sales_train$sale_within_percent_log = sale_within_log$sale_within_percent_log
   
   # average total order value 
-  sales_train = sales_train %>% mutate(avg_order_sale = slshist/ordhist_max)
+  sales_train = sales_train %>% dplyr::mutate(avg_order_sale = slshist/ordhist_max,
+                                       log_avg_order_sale = log_slshist/ordhist_max)
+  sales_train$log_avg_order_sale[is.na(sales_train$log_avg_order_sale)] = 0
+  sales_train$log_avg_order_sale[is.na(sales_train$log_avg_order_sale)] =0
   
   # maximum order witnin fall or spring, categorical
   max_season = sales_train %>% dplyr::select(falord, sprord)
   sales_train$max_season = colnames(max_season)[apply(max_season,1,which.max)]
   
+  # generate interaction terms
+  interaction_sales = sales_train %>% dplyr::select(log_slslyr, log_sls2ago, log_sls3ago)
+  interaction_sales = model.matrix( ~.^3, data=interaction_sales)
+  interaction_sales = interaction_sales[,-c(1:4)]
+  sales_train = cbind(sales_train, interaction_sales)
+  
+  # sales trend
+  subset_3yrsales = sales_train[,c("slstyr" ,"slslyr" , "sls2ago", "sls3ago")]
+  RowVar <- function(x) {
+    rowSums((x - rowMeans(x))^2)/(dim(x)[2] - 1)
+  }
+  subset_3yrsales = subset_3yrsales[,c(4,3,2,1)]
+  alldiff = t(apply(subset_3yrsales,1,diff))
+  salesign = rowSums(t(apply(subset_3yrsales,1,sign)))
+  diffsign = t(apply(alldiff,1,sign))
+  diffproduct = diffsign[,1]*diffsign[,2]
+  diffeffect = ifelse(diffproduct==1,1,ifelse(diffproduct==0,0,0.5))
+  trend = salesign + diffeffect
+  sales_train$trend = trend
+  
+  # order trend
+  ords = sales_train[,c("ordtyr" ,"ordlyr" , "ord2ago", "ord3ago")]
+  ords = ords[,c(4,3,2,1)]
+  ordalldiff = t(apply(ords,1,diff))
+  ordsign = rowSums(t(apply(ords,1,sign)))
+  orddiffsign = t(apply(ordalldiff,1,sign))
+  orddiffproduct = orddiffsign[,1]*orddiffsign[,2]
+  orddiffeffect = ifelse(orddiffproduct==1,1,ifelse(orddiffproduct==0,0,0.5))
+  ordtrend = ordsign + orddiffeffect
+  sales_train$ordtrend = ordtrend
+  
+  # consistency
+  subset_3yrsales = sales_train[,c("log_slstyr" ,"log_slslyr" , "log_sls2ago", "log_sls3ago")]
+  RowVar <- function(x) {
+    rowSums((x - rowMeans(x))^2)/(dim(x)[2] - 1)
+  }
+  alldiff = t(apply(subset_3yrsales,1,diff))
+  finaldiff = rowSums(alldiff)
+  
+  salesvar = RowVar(subset_3yrsales)
+  salesmean = rowMeans(subset_3yrsales)
+  salescv = salesvar/salesmean
+  meancv = mean(salescv,na.rm=TRUE)
+  salescv = ifelse(salesmean!=0, salesvar/salesmean,meancv)
+  subset_3yrsales$cv = salescv
+  subset_3yrsales$diff= -finaldiff
+  sales_train$cv = salescv
+  sales_train$diff = finaldiff
   return(sales_train)
 }
 
 get_optimal_p <- function(real_response, predict_fit, p_threshold_list){
-  # get the optimal probability threshold according to CCR
+  # get the optimal probability threshold according to CCR / f1_score
   # @param real_response: actual response vector
   # @param predict_fit: predicted probabilty from the model
   # @param p_threshold_list: list of probability that we want to test on
   # @return: optimal probability threshold according to CCR
   
-  max_ccr= 0
+  max_metric= 0
   optimal_p = 0
+  
+  
   for (p in p_threshold_list){
     pred = rep(0, length(real_response))
     pred[predict_fit > p]=1
     ccr = sum(diag(table(real=real_response, pred)))/ length(real_response)
-    # print(paste("CCR:",ccr," when p=",p))
+    # confusion_table = table(real=real_response, pred)
+    # 
+    # sensitivity=confusion_table[2,2]/(confusion_table[2,1]+confusion_table[2,2])
+    # specificity=confusion_table[1,1]/(confusion_table[1,1]+confusion_table[1,2])
+    # precision=confusion_table[2,2]/(confusion_table[1,2]+confusion_table[2,2]) 
+    # f1_score=2*precision*sensitivity/(precision+sensitivity)
+    # print(paste("f1_score:",f1_score," when p=",p))
     
-    if (ccr >= max_ccr){
-      max_ccr= ccr
+    if (ccr >= max_metric){
+      max_metric= ccr
       optimal_p = p
     }
   }
@@ -164,7 +234,9 @@ model_validation <- function(sales_test, fit_classification, optimal_p, fit_regr
   
   ## calculate MSPE & top_1000
   calculate_MSPE <- function(actual, predicted){
-    return(sum((actual-predicted) ^ 2)/(length(actual)-length(regression_selected_features)))
+    return(sum((actual-predicted) ^ 2)/
+             (length(actual)-length(fit_regression$coefficients)-1)
+           )
   }
   
   calculate_top1000 <- function(actual, predicted, by_predicted=TRUE){
