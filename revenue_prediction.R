@@ -17,20 +17,27 @@ sales_test = sales_df %>% filter(train==0)
 sales_train_2 = data_manipulate(sales_train)
 
 
-
 ########## Classification
 ##### Create Possible Features
-# classificaiton_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
-#                                      'sls_consistency','lpuryear_new','sale_within_percent',
-#                                      'avg_order_sale','max_season','targdol_bol')
-classificaiton_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
-                                     'lpuryear_new','salesmean',
-                                     'max_season','targdol_bol','sale_within_percent','trend')#'avg_order_sale','log_slslyr:log_sls2ago:log_sls3ago','sale_within_three','log_slslyr:log_sls2ago','log_slslyr:log_sls3ago','log_sls2ago:log_sls3ago','sls_consistency','salesvar',
 
-# #### Try undersampling
-# sales_train_2_yes = sales_train_2 %>% filter(targdol_bol==1)
-# sales_train_2_no = sales_train_2 %>% filter(targdol_bol==0) %>% sample_n(dim(sales_train_2_yes)[1])
-# sales_train_undersample = rbind(sales_train_2_yes, sales_train_2_no)
+# current best
+classificaiton_selected_features = c('targdol_bol','log_slshist','ordhist_max_sqrt','sales_consistency',
+                                     'lpuryear_new','salesmean',
+                                     'max_season','sale_within_percent',
+                                      'log_sls3ago')
+# 'last_sls_largest': better result but insignificant
+
+#'avg_order_sale','log_slslyr:log_sls2ago:log_sls3ago','sale_within_three','log_slslyr:log_sls2ago','log_slslyr:log_sls3ago','log_sls2ago:log_sls3ago','sls_consistency','salesvar',
+
+# classificaiton_selected_features = c('targdol_bol','log_slshist','cv',
+#                                      'lpuryear_new','log_avg_order_sale',
+#                                      'max_season','sale_within_percent','trend',
+#                                      'log_slslyr:log_sls2ago','log_slslyr:log_sls3ago','log_sls2ago:log_sls3ago')#'ordhist_max_sqrt','sales_consistency','ordtrend','log_sale_within_three','log_slslyr:log_sls2ago:log_sls3ago','salesvar','salesmean',
+
+cor_features = c('targdol_bol','log_slshist','ordhist_max_sqrt','sales_consistency',
+                 'lpuryear_new','salesmean',
+                 'sale_within_percent')#'sales_consistency','ordtrend','log_sale_within_three','log_slslyr:log_sls2ago:log_sls3ago','salesvar','salesmean',
+View(cor(sales_train_2[cor_features]))
 
 
 ##### Model Fitting
@@ -47,7 +54,6 @@ optimal_p = get_optimal_p(real_response, predict_fit, seq(0.1,0.8,0.01))
 
 calculate_metrics(real_response, predict_fit, optimal_p)
 
-#0.7907437
 ##### Compare between all fitted classification models 
 if(FALSE){
   ### Version 3: 
@@ -138,44 +144,26 @@ if(FALSE){
 }
 
 
-
-
-
 ########## Regression
 # For regression, we will only use the data with targdol > 0 as our training data
 # sales_train_2$targbool = ifelse(sales_train_2$targdol!=0, 1, 0) 
 # sales_train_reg = sales_train_2 %>% filter(targbool==1) 
 sales_train_reg = sales_train_2 %>% filter(targdol != 0 )
 
-colSums(is.na(sales_train_reg))
-colSums(is.na(sales_train))
+
 ##### Model Fitting
-### base model
-# regression_selected_features = c("log_slstyr", "log_slslyr","log_sls2ago","log_sls3ago","ordtyr","ordlyr","ord2ago","ord3ago","ordhist","falord","sprord","log_targdol")
-
-### version 2
-# regression_selected_features = c('slshist','ordhist_max','sales_consistency','lpuryear_new',"log_targdol")
-# regression_selected_features = c('slshist','ordhist_max','sales_consistency',"log_targdol")
-
-### version 3
-# regression_selected_features = c('log_slshist','ordhist_max_sqrt','sales_consistency',
-#                                   'sls_consistency','lpuryear_new','sale_within_percent',
-#                                   'avg_order_sale','max_season',"log_targdol")
-regression_selected_features = c('log_slshist','sales_consistency','sls_consistency',
-                                 'sale_within_percent','log_targdol')#'avg_order_sale','salesvar','salesmean',
-regression_selected_features = c('targdol','lpuryear','log_slstyr','log_slslyr','log_sls2ago','sale_within_percent_log',
-                                 'log_avg_order_sale','log_sls3ago','cv','trend','ordtrend','ordtyr','ordlyr','ordhist_max')
-
-fit2 = lm(log(targdol) ~ lpuryear + log_slstyr*log_slslyr  + log_sls2ago + sale_within_percent_log
-          + log_avg_order_sale + log_sls3ago + cv*trend*ordtrend + ordtyr*ordlyr + ordhist_max , data = sales_train_reg[regression_selected_features])
-# avg_order_sale
-# cv
-summary(fit2)
-
 
 ##### > Multiple Linear Regression
-fit_multiple = lm(log_targdol~.,data=sales_train_reg[regression_selected_features])
+# fit_multiple = lm(log(targdol) ~ lpuryear + log_slstyr*log_slslyr  + log_sls2ago + log_sale_within_three
+#           + log_avg_order_sale + log_sls3ago + cv*trend*ordtrend + ordtyr*ordlyr + ordhist_max , data = sales_train_reg)
+# summary(fit_multiple)
+
+fit_multiple = lm(log(targdol) ~ log_slstyr + log_slslyr + log_sls3ago + 
+     log_slshist + ordhist_max_sqrt + log_avg_order_sale + ordtrend + 
+       cv + ordlyr + log_slstyr*ordtyr + log_sls2ago*trend, data = sales_train_reg)
 summary(fit_multiple)
+# vif(fit_multiple)
+
 
 ##### > Stepwise Linear Regression
 # **Backward**
@@ -234,29 +222,61 @@ if(FALSE){
 }
 
 
-# 
-# ## predict sales_test_2 using fit_classification
-# sales_test_2 = data_manipulate(sales_test)
-# predict_classification_final = predict(fit_classification, newdata=sales_test_2[classificaiton_selected_features], type="response")
-# 
-# ## keep the data with targdol prob > optimal_p, save as sales_test_reg
-# sales_test_2$targdol_bol_predict = predict_classification_final
-# sales_test_2$uid = row.names(sales_test_2)
-# sales_test_reg = sales_test_2 %>% filter(targdol_bol_predict>optimal_p)
-# 
-# ## predict sales_test_reg using fit_regression, and take exp(log_targdon) to recover back to real measure
-# predict_regression_log_final = predict(fit2, newdata=sales_test_reg[regression_selected_features])
-# predict_regression_final = exp(predict_regression_log_final)
-# sales_test_reg$targdol_predict = predict_regression_final
-
-
 ########## Final Evaluation
-result = model_validation(sales_test, fit_classification, optimal_p, fit2, classificaiton_selected_features, regression_selected_features)
+result = model_validation(sales_test, fit_classification, fit_multiple, classificaiton_selected_features)
 result
 
 
 ##### Final measurement comparasion
 if(FALSE){
+
+  ### Version 7 
+  # adding 'log_sls3ago' to logistic and change into 'ordhist_max_sqrt'
+  # $mspe
+  # [1] 434.865
+  # 
+  # $top1000
+  # [1] 45370.6
+  
+  # Current Best version, having log_avg_order_sale as log_slshist/ordhist_max
+  # classificaiton_selected_features = c('targdol_bol','log_slshist','ordhist_max_sqrt','sales_consistency',
+  #                                      'lpuryear_new','salesmean',
+  #                                      'max_season','sale_within_percent')
+  # fit_multiple = lm(log(targdol) ~ log_slstyr + log_slslyr + log_sls3ago + 
+  #                     log_slshist + ordhist_max + log_avg_order_sale + ordtrend + 
+  #                     cv + ordlyr + log_slstyr*ordtyr + log_sls2ago*trend, data = sales_train_reg)
+  # $mspe
+  # [1] 426.3209
+  # 
+  # $top1000
+  # [1] 43218.81
+  
+  # After modifying some variables in data_manipulate
+  # $mspe
+  # [1] 411.4209
+  # 
+  # $top1000
+  # [1] 40529.71
+  
+  # $mspe
+  # [1] 403.1975
+  # 
+  # $top1000
+  # [1] 40700.76
+
+  
+  ### Version 6
+  # New criterion calculation using the combining result last week
+  # $mspe
+  # [1] 411.2862
+  # 
+  # $top1000
+  # [1] 41763.5
+  # fit_multiple = lm(log(targdol) ~ lpuryear + log_slstyr*log_slslyr  + log_sls2ago + sale_within_three
+  #                   + log_avg_order_sale + log_sls3ago + cv*trend*ordtrend + ordtyr*ordlyr + ordhist_max , data = sales_train_reg[regression_selected_features])
+  # 
+  # 
+  
   ### Version 5
   # combining the result
   # $mspe
